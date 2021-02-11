@@ -1,0 +1,12 @@
+- hosts: docker
+  tasks:
+  - name: "installing"
+    package:
+     name: httpd
+     state: present
+  - name: "deploying website"
+    copy:
+     content: "hello World"
+     dest: /var/www/html/index.html
+  - name: "starting Service"
+    command: "/usr/sbin/httpd"

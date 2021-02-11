@@ -1,0 +1,116 @@
+# prerequisite 
+
+#create directory : /root/ansible/Inventory/
+#Inside ansible.cfg file add the above path as inventory
+#create file inside Inventory Folder without extension as: remote
+#type inside remote file (the code given below with actual remote ip)  
+#[remote]
+#remote_ip ansible_ssh_user=root ansible_ssh_pass=password
+
+#Step1: Assigining host as remote
+#--------------------------------
+- hosts: remote
+  vars:
+   container_name: default
+  vars_prompt:
+  - name: "container_name"
+    prompt: "Enter the Container Name: "
+    private: no
+  tasks:
+#Step2: Configuring YUM to install Docker Software.
+#-------------------------------------------------
+  - name: Configuring YUM
+    yum_repository:
+     name: docker
+     description: Configuring YUM for Docker
+     baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+     gpgcheck: no
+     enabled: true 
+#Step3: Install Python because Ansible is based on Python
+#--------------------------------------------------------
+  - name: Install Python3
+    package: 
+     name: python36
+     state: present 
+#Step4: Python provide pip which is used to install Docker-py to run docker commands
+#--------------------------------------------------------------------------
+  - name: Install Docker-py using pip 
+    pip:
+     name: docker-py
+#Step5: Installing Docker on ReadHat8 Os 
+#---------------------------------------
+  - name: Install Docker on RedHat
+    command: "yum install docker-ce --nobest -y"
+    when: ansible_os_family == "RedHat"
+#Step6: Starting Docker Services
+#-------------------------------
+  - name: Start Docker Service
+    service:
+     name: docker
+     state: started
+#Step7: Pull CentOS Image from dockerHub
+#----------------------------------------
+  - name: Pull Docker CentOS Image
+    docker_image:
+     name: centos
+     source: pull
+#Step8: copying Docker file in remote Location
+#---------------------------------------------
+  - name: Copy Dockerfile
+    copy: 
+     src: docker/Dockerfile
+     dest: /var
+
+#Step9: Create docker image using dockerfile
+#------------------------------------------- 
+  - name: creating image with ssh enable
+    docker_image:
+     name: docker_ssh
+     path: /var
+     state: build
+#Step10: Creating Docker Container with ssh enabled and webserver enable
+#-----------------------------------------------------------------------
+  - name: Creating Docker Container
+    docker_container:
+     name: "{{ container_name }}"
+     image: docker_ssh:latest
+     state: started
+     detach: true
+     interactive: true
+     ports:
+     - "{{ 9000 | random(start=2000) }}:22"
+     - "{{ 9000 | random(start=2000) }}:80"
+#Step11: Getting IP and Port Number about using container name
+#-------------------------------------------------------------
+  - name: Get infos on container
+    docker_container_info:
+      name: "{{ container_name }}"
+    register: result
+  - name: Print information about container
+    debug:
+      var: result.container.NetworkSettings.IPAddress
+    when: result.exists
+  - name: Print docker port
+    debug:
+      var: result.container.NetworkSettings.Ports["22/tcp"][0].HostPort
+  - name: creating file
+    file:
+      path: /docker
+      state: touch
+#Step12: Adding Inventory to remote
+#----------------------------------
+  - name: Adding IP to ansible Inventory File
+    lineinfile:
+      dest: /docker 
+      line: "{%for ip in groups['remote'] %}
+container{{ 2000 | random(start=1) }} ansible_ssh_host={{ ip }}
+             {% endfor %} ansible_port={{ result.container.NetworkSettings.Ports['22/tcp'][0].HostPort }} ansible_ssh_user=root ansible_ssh_pass=password"                                                                                 
+#Step13: Pulling Docker Inventory 
+#--------------------------------
+  - name: Fetching Docker Inventory from remote to local
+    fetch:
+      src: /docker
+      dest: /root/ansible/Inventory/
+      flat: yes
+
+
